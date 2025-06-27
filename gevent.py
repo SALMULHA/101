@@ -1,30 +1,35 @@
 from __future__ import absolute_import
-import sys
 
-from apscheduler.executors.base import BaseExecutor, run_job
-
+from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.base import BaseScheduler
 
 try:
+    from gevent.event import Event
+    from gevent.lock import RLock
     import gevent
 except ImportError:  # pragma: nocover
-    raise ImportError('GeventExecutor requires gevent installed')
+    raise ImportError('GeventScheduler requires gevent installed')
 
 
-class GeventExecutor(BaseExecutor):
-    """
-    Runs jobs as greenlets.
+class GeventScheduler(BlockingScheduler):
+    """A scheduler that runs as a Gevent greenlet."""
 
-    Plugin alias: ``gevent``
-    """
+    _greenlet = None
 
-    def _do_submit_job(self, job, run_times):
-        def callback(greenlet):
-            try:
-                events = greenlet.get()
-            except BaseException:
-                self._run_job_error(job.id, *sys.exc_info()[1:])
-            else:
-                self._run_job_success(job.id, events)
+    def start(self, *args, **kwargs):
+        self._event = Event()
+        BaseScheduler.start(self, *args, **kwargs)
+        self._greenlet = gevent.spawn(self._main_loop)
+        return self._greenlet
 
-        gevent.spawn(run_job, job, job._jobstore_alias, run_times, self._logger.name).\
-            link(callback)
+    def shutdown(self, *args, **kwargs):
+        super(GeventScheduler, self).shutdown(*args, **kwargs)
+        self._greenlet.join()
+        del self._greenlet
+
+    def _create_lock(self):
+        return RLock()
+
+    def _create_default_executor(self):
+        from apscheduler.executors.gevent import GeventExecutor
+        return GeventExecutor()

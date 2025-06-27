@@ -1,2 +1,2 @@
 [console_scripts]
-alembic = alembic.config:main
+normalizer = charset_normalizer:cli.cli_detect

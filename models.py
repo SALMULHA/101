@@ -1,183 +1,360 @@
-# تغيير من
-# from flask_sqlalchemy import SQLAlchemy
-# db = SQLAlchemy()
+from __future__ import annotations
 
-# إلى
-from extensions import db
-from flask_login import UserMixin
-from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime
+from encodings.aliases import aliases
+from hashlib import sha256
+from json import dumps
+from re import sub
+from typing import Any, Iterator, List, Tuple
 
-# حذف السطر db = SQLAlchemy() لأنه تم استيراد db من extensions
+from .constant import RE_POSSIBLE_ENCODING_INDICATION, TOO_BIG_SEQUENCE
+from .utils import iana_name, is_multi_byte_encoding, unicode_range
 
-class Role(db.Model):
-    __tablename__ = 'roles'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), unique=True, nullable=False)
-    description = db.Column(db.String(255))
-    users = db.relationship('User', backref='role', lazy='dynamic')
-    
-    def __repr__(self):
-        return f'<Role {self.name}>'
 
-class User(UserMixin, db.Model):
-    __tablename__ = 'users'
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(64), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
-    full_name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120))
-    role_id = db.Column(db.Integer, db.ForeignKey('roles.id'))
-    department_id = db.Column(db.Integer, db.ForeignKey('departments.id'))
-    is_active = db.Column(db.Boolean, default=True)
-    last_login = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-    
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
-    
-    def __repr__(self):
-        return f'<User {self.username}>'
-    
-    def get_unread_notifications_count(self):
-        from modules.models import Notification
-        return Notification.query.filter_by(user_id=self.id, is_read=False).count()
+class CharsetMatch:
+    def __init__(
+        self,
+        payload: bytes,
+        guessed_encoding: str,
+        mean_mess_ratio: float,
+        has_sig_or_bom: bool,
+        languages: CoherenceMatches,
+        decoded_payload: str | None = None,
+        preemptive_declaration: str | None = None,
+    ):
+        self._payload: bytes = payload
 
-class Department(db.Model):
-    __tablename__ = 'departments'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(100), unique=True, nullable=False)
-    description = db.Column(db.String(255))
-    personnel = db.relationship('Personnel', backref='department', lazy='dynamic')
-    users = db.relationship('User', backref='department', lazy='dynamic')
-    
-    def __repr__(self):
-        return f'<Department {self.name}>'
+        self._encoding: str = guessed_encoding
+        self._mean_mess_ratio: float = mean_mess_ratio
+        self._languages: CoherenceMatches = languages
+        self._has_sig_or_bom: bool = has_sig_or_bom
+        self._unicode_ranges: list[str] | None = None
 
-class Rank(db.Model):
-    __tablename__ = 'ranks'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), unique=True, nullable=False)
-    category = db.Column(db.String(50))  # ضابط، ضابط صف، جندي، عقد، مساندة
-    personnel = db.relationship('Personnel', backref='rank', lazy='dynamic')
-    
-    def __repr__(self):
-        return f'<Rank {self.name}>'
+        self._leaves: list[CharsetMatch] = []
+        self._mean_coherence_ratio: float = 0.0
 
-class Personnel(db.Model):
-    __tablename__ = 'personnel'
-    id = db.Column(db.Integer, primary_key=True)
-    military_id = db.Column(db.String(20), unique=True, nullable=False)
-    full_name = db.Column(db.String(100), nullable=False)
-    rank_id = db.Column(db.Integer, db.ForeignKey('ranks.id'), nullable=False)
-    department_id = db.Column(db.Integer, db.ForeignKey('departments.id'), nullable=False)
-    # إضافة حقل status_id
-    status_id = db.Column(db.Integer, db.ForeignKey('attendance_statuses.id'))
-    status = db.relationship('AttendanceStatus', backref='personnel_status', foreign_keys=[status_id])
-    phone = db.Column(db.String(20))
-    date_of_birth = db.Column(db.Date)
-    date_of_joining = db.Column(db.Date)
-    is_active = db.Column(db.Boolean, default=True)
-    notes = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    attendance_records = db.relationship('AttendanceRecord', backref='personnel', lazy='dynamic')
-    
-    def __repr__(self):
-        return f'<Personnel {self.military_id} - {self.full_name}>'
+        self._output_payload: bytes | None = None
+        self._output_encoding: str | None = None
 
-class AttendanceStatus(db.Model):
-    __tablename__ = 'attendance_statuses'
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), unique=True, nullable=False)
-    description = db.Column(db.String(255))
-    requires_document = db.Column(db.Boolean, default=False)
-    records = db.relationship('AttendanceRecord', backref='status', lazy='dynamic')
-    
-    def __repr__(self):
-        return f'<AttendanceStatus {self.name}>'
+        self._string: str | None = decoded_payload
 
-class AttendanceRecord(db.Model):
-    __tablename__ = 'attendance_records'
-    id = db.Column(db.Integer, primary_key=True)
-    personnel_id = db.Column(db.Integer, db.ForeignKey('personnel.id'), nullable=False)
-    status_id = db.Column(db.Integer, db.ForeignKey('attendance_statuses.id'), nullable=False)
-    date = db.Column(db.Date, nullable=False)
-    start_date = db.Column(db.Date)  # تاريخ بداية الحالة (مثل بداية الإجازة)
-    end_date = db.Column(db.Date)  # تاريخ نهاية الحالة (مثل نهاية الإجازة)
-    document_path = db.Column(db.String(255))  # مسار المستند المرفق
-    notes = db.Column(db.Text)
-    # إضافة حقول جديدة لتتبع مصدر الحالة
-    source_type = db.Column(db.String(20), default='manual')  # manual, copied, default
-    source_date = db.Column(db.Date)  # التاريخ الذي تم النسخ منه
-    is_auto_copied = db.Column(db.Boolean, default=False)  # هل تم النسخ تلقائياً
-    recorded_by = db.Column(db.Integer, db.ForeignKey('users.id'))  # من قام بالتسجيل
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    def __repr__(self):
-        return f'<AttendanceRecord {self.personnel_id} - {self.date}>'
+        self._preemptive_declaration: str | None = preemptive_declaration
 
-class Document(db.Model):
-    __tablename__ = 'documents'
-    id = db.Column(db.Integer, primary_key=True)
-    filename = db.Column(db.String(255), nullable=False)
-    original_filename = db.Column(db.String(255), nullable=False)
-    file_path = db.Column(db.String(255), nullable=False)
-    file_type = db.Column(db.String(50))
-    file_size = db.Column(db.Integer)  # بالبايت
-    attendance_record_id = db.Column(db.Integer, db.ForeignKey('attendance_records.id'))
-    uploaded_by = db.Column(db.Integer, db.ForeignKey('users.id'))
-    uploaded_at = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    def __repr__(self):
-        return f'<Document {self.original_filename}>'
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CharsetMatch):
+            if isinstance(other, str):
+                return iana_name(other) == self.encoding
+            return False
+        return self.encoding == other.encoding and self.fingerprint == other.fingerprint
 
-class AuditLog(db.Model):
-    __tablename__ = 'audit_logs'
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
-    action = db.Column(db.String(50), nullable=False)  # مثل: إضافة، تعديل، حذف
-    table_name = db.Column(db.String(50), nullable=False)  # اسم الجدول المتأثر
-    record_id = db.Column(db.Integer)  # معرف السجل المتأثر
-    old_values = db.Column(db.Text)  # القيم القديمة (JSON)
-    new_values = db.Column(db.Text)  # القيم الجديدة (JSON)
-    ip_address = db.Column(db.String(50))
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    def __repr__(self):
-        return f'<AuditLog {self.action} - {self.table_name} - {self.record_id}>'
+    def __lt__(self, other: object) -> bool:
+        """
+        Implemented to make sorted available upon CharsetMatches items.
+        """
+        if not isinstance(other, CharsetMatch):
+            raise ValueError
 
-class Notification(db.Model):
-    __tablename__ = 'notifications'
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(200), nullable=False)
-    message = db.Column(db.Text, nullable=False)
-    notification_type = db.Column(db.String(50), nullable=False)  # warning, info, danger, success
-    personnel_id = db.Column(db.Integer, db.ForeignKey('personnel.id'))
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))  # المستخدم المستهدف
-    is_read = db.Column(db.Boolean, default=False)
-    is_system_generated = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    read_at = db.Column(db.DateTime)
-    
-    # العلاقات
-    personnel = db.relationship('Personnel', backref='notifications')
-    user = db.relationship('User', backref='notifications')
-    
-    # إضافة فهارس لتحسين الأداء
-    __table_args__ = (
-        db.Index('idx_user_read', 'user_id', 'is_read'),
-        db.Index('idx_personnel_created', 'personnel_id', 'created_at'),
-        db.Index('idx_type_created', 'notification_type', 'created_at'),
-    )
-    def __repr__(self):
-        return f'<Notification {self.title}>'
-    
-    def mark_as_read(self):
-        self.is_read = True
-        self.read_at = datetime.utcnow()
-        db.session.commit()
+        chaos_difference: float = abs(self.chaos - other.chaos)
+        coherence_difference: float = abs(self.coherence - other.coherence)
+
+        # Below 1% difference --> Use Coherence
+        if chaos_difference < 0.01 and coherence_difference > 0.02:
+            return self.coherence > other.coherence
+        elif chaos_difference < 0.01 and coherence_difference <= 0.02:
+            # When having a difficult decision, use the result that decoded as many multi-byte as possible.
+            # preserve RAM usage!
+            if len(self._payload) >= TOO_BIG_SEQUENCE:
+                return self.chaos < other.chaos
+            return self.multi_byte_usage > other.multi_byte_usage
+
+        return self.chaos < other.chaos
+
+    @property
+    def multi_byte_usage(self) -> float:
+        return 1.0 - (len(str(self)) / len(self.raw))
+
+    def __str__(self) -> str:
+        # Lazy Str Loading
+        if self._string is None:
+            self._string = str(self._payload, self._encoding, "strict")
+        return self._string
+
+    def __repr__(self) -> str:
+        return f"<CharsetMatch '{self.encoding}' bytes({self.fingerprint})>"
+
+    def add_submatch(self, other: CharsetMatch) -> None:
+        if not isinstance(other, CharsetMatch) or other == self:
+            raise ValueError(
+                "Unable to add instance <{}> as a submatch of a CharsetMatch".format(
+                    other.__class__
+                )
+            )
+
+        other._string = None  # Unload RAM usage; dirty trick.
+        self._leaves.append(other)
+
+    @property
+    def encoding(self) -> str:
+        return self._encoding
+
+    @property
+    def encoding_aliases(self) -> list[str]:
+        """
+        Encoding name are known by many name, using this could help when searching for IBM855 when it's listed as CP855.
+        """
+        also_known_as: list[str] = []
+        for u, p in aliases.items():
+            if self.encoding == u:
+                also_known_as.append(p)
+            elif self.encoding == p:
+                also_known_as.append(u)
+        return also_known_as
+
+    @property
+    def bom(self) -> bool:
+        return self._has_sig_or_bom
+
+    @property
+    def byte_order_mark(self) -> bool:
+        return self._has_sig_or_bom
+
+    @property
+    def languages(self) -> list[str]:
+        """
+        Return the complete list of possible languages found in decoded sequence.
+        Usually not really useful. Returned list may be empty even if 'language' property return something != 'Unknown'.
+        """
+        return [e[0] for e in self._languages]
+
+    @property
+    def language(self) -> str:
+        """
+        Most probable language found in decoded sequence. If none were detected or inferred, the property will return
+        "Unknown".
+        """
+        if not self._languages:
+            # Trying to infer the language based on the given encoding
+            # Its either English or we should not pronounce ourselves in certain cases.
+            if "ascii" in self.could_be_from_charset:
+                return "English"
+
+            # doing it there to avoid circular import
+            from charset_normalizer.cd import encoding_languages, mb_encoding_languages
+
+            languages = (
+                mb_encoding_languages(self.encoding)
+                if is_multi_byte_encoding(self.encoding)
+                else encoding_languages(self.encoding)
+            )
+
+            if len(languages) == 0 or "Latin Based" in languages:
+                return "Unknown"
+
+            return languages[0]
+
+        return self._languages[0][0]
+
+    @property
+    def chaos(self) -> float:
+        return self._mean_mess_ratio
+
+    @property
+    def coherence(self) -> float:
+        if not self._languages:
+            return 0.0
+        return self._languages[0][1]
+
+    @property
+    def percent_chaos(self) -> float:
+        return round(self.chaos * 100, ndigits=3)
+
+    @property
+    def percent_coherence(self) -> float:
+        return round(self.coherence * 100, ndigits=3)
+
+    @property
+    def raw(self) -> bytes:
+        """
+        Original untouched bytes.
+        """
+        return self._payload
+
+    @property
+    def submatch(self) -> list[CharsetMatch]:
+        return self._leaves
+
+    @property
+    def has_submatch(self) -> bool:
+        return len(self._leaves) > 0
+
+    @property
+    def alphabets(self) -> list[str]:
+        if self._unicode_ranges is not None:
+            return self._unicode_ranges
+        # list detected ranges
+        detected_ranges: list[str | None] = [unicode_range(char) for char in str(self)]
+        # filter and sort
+        self._unicode_ranges = sorted(list({r for r in detected_ranges if r}))
+        return self._unicode_ranges
+
+    @property
+    def could_be_from_charset(self) -> list[str]:
+        """
+        The complete list of encoding that output the exact SAME str result and therefore could be the originating
+        encoding.
+        This list does include the encoding available in property 'encoding'.
+        """
+        return [self._encoding] + [m.encoding for m in self._leaves]
+
+    def output(self, encoding: str = "utf_8") -> bytes:
+        """
+        Method to get re-encoded bytes payload using given target encoding. Default to UTF-8.
+        Any errors will be simply ignored by the encoder NOT replaced.
+        """
+        if self._output_encoding is None or self._output_encoding != encoding:
+            self._output_encoding = encoding
+            decoded_string = str(self)
+            if (
+                self._preemptive_declaration is not None
+                and self._preemptive_declaration.lower()
+                not in ["utf-8", "utf8", "utf_8"]
+            ):
+                patched_header = sub(
+                    RE_POSSIBLE_ENCODING_INDICATION,
+                    lambda m: m.string[m.span()[0] : m.span()[1]].replace(
+                        m.groups()[0],
+                        iana_name(self._output_encoding).replace("_", "-"),  # type: ignore[arg-type]
+                    ),
+                    decoded_string[:8192],
+                    count=1,
+                )
+
+                decoded_string = patched_header + decoded_string[8192:]
+
+            self._output_payload = decoded_string.encode(encoding, "replace")
+
+        return self._output_payload  # type: ignore
+
+    @property
+    def fingerprint(self) -> str:
+        """
+        Retrieve the unique SHA256 computed using the transformed (re-encoded) payload. Not the original one.
+        """
+        return sha256(self.output()).hexdigest()
+
+
+class CharsetMatches:
+    """
+    Container with every CharsetMatch items ordered by default from most probable to the less one.
+    Act like a list(iterable) but does not implements all related methods.
+    """
+
+    def __init__(self, results: list[CharsetMatch] | None = None):
+        self._results: list[CharsetMatch] = sorted(results) if results else []
+
+    def __iter__(self) -> Iterator[CharsetMatch]:
+        yield from self._results
+
+    def __getitem__(self, item: int | str) -> CharsetMatch:
+        """
+        Retrieve a single item either by its position or encoding name (alias may be used here).
+        Raise KeyError upon invalid index or encoding not present in results.
+        """
+        if isinstance(item, int):
+            return self._results[item]
+        if isinstance(item, str):
+            item = iana_name(item, False)
+            for result in self._results:
+                if item in result.could_be_from_charset:
+                    return result
+        raise KeyError
+
+    def __len__(self) -> int:
+        return len(self._results)
+
+    def __bool__(self) -> bool:
+        return len(self._results) > 0
+
+    def append(self, item: CharsetMatch) -> None:
+        """
+        Insert a single match. Will be inserted accordingly to preserve sort.
+        Can be inserted as a submatch.
+        """
+        if not isinstance(item, CharsetMatch):
+            raise ValueError(
+                "Cannot append instance '{}' to CharsetMatches".format(
+                    str(item.__class__)
+                )
+            )
+        # We should disable the submatch factoring when the input file is too heavy (conserve RAM usage)
+        if len(item.raw) < TOO_BIG_SEQUENCE:
+            for match in self._results:
+                if match.fingerprint == item.fingerprint and match.chaos == item.chaos:
+                    match.add_submatch(item)
+                    return
+        self._results.append(item)
+        self._results = sorted(self._results)
+
+    def best(self) -> CharsetMatch | None:
+        """
+        Simply return the first match. Strict equivalent to matches[0].
+        """
+        if not self._results:
+            return None
+        return self._results[0]
+
+    def first(self) -> CharsetMatch | None:
+        """
+        Redundant method, call the method best(). Kept for BC reasons.
+        """
+        return self.best()
+
+
+CoherenceMatch = Tuple[str, float]
+CoherenceMatches = List[CoherenceMatch]
+
+
+class CliDetectionResult:
+    def __init__(
+        self,
+        path: str,
+        encoding: str | None,
+        encoding_aliases: list[str],
+        alternative_encodings: list[str],
+        language: str,
+        alphabets: list[str],
+        has_sig_or_bom: bool,
+        chaos: float,
+        coherence: float,
+        unicode_path: str | None,
+        is_preferred: bool,
+    ):
+        self.path: str = path
+        self.unicode_path: str | None = unicode_path
+        self.encoding: str | None = encoding
+        self.encoding_aliases: list[str] = encoding_aliases
+        self.alternative_encodings: list[str] = alternative_encodings
+        self.language: str = language
+        self.alphabets: list[str] = alphabets
+        self.has_sig_or_bom: bool = has_sig_or_bom
+        self.chaos: float = chaos
+        self.coherence: float = coherence
+        self.is_preferred: bool = is_preferred
+
+    @property
+    def __dict__(self) -> dict[str, Any]:  # type: ignore
+        return {
+            "path": self.path,
+            "encoding": self.encoding,
+            "encoding_aliases": self.encoding_aliases,
+            "alternative_encodings": self.alternative_encodings,
+            "language": self.language,
+            "alphabets": self.alphabets,
+            "has_sig_or_bom": self.has_sig_or_bom,
+            "chaos": self.chaos,
+            "coherence": self.coherence,
+            "unicode_path": self.unicode_path,
+            "is_preferred": self.is_preferred,
+        }
+
+    def to_json(self) -> str:
+        return dumps(self.__dict__, ensure_ascii=True, indent=4)

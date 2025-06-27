@@ -1,52 +1,66 @@
 from __future__ import absolute_import
+import asyncio
+from functools import wraps, partial
 
-import sys
-
-from apscheduler.executors.base import BaseExecutor, run_job
-from apscheduler.executors.base_py3 import run_coroutine_job
-from apscheduler.util import iscoroutinefunction_partial
+from apscheduler.schedulers.base import BaseScheduler
+from apscheduler.util import maybe_ref
 
 
-class AsyncIOExecutor(BaseExecutor):
+def run_in_event_loop(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        wrapped = partial(func, self, *args, **kwargs)
+        self._eventloop.call_soon_threadsafe(wrapped)
+    return wrapper
+
+
+class AsyncIOScheduler(BaseScheduler):
     """
-    Runs jobs in the default executor of the event loop.
+    A scheduler that runs on an asyncio (:pep:`3156`) event loop.
 
-    If the job function is a native coroutine function, it is scheduled to be run directly in the
-    event loop as soon as possible. All other functions are run in the event loop's default
-    executor which is usually a thread pool.
+    The default executor can run jobs based on native coroutines (``async def``).
 
-    Plugin alias: ``asyncio``
+    Extra options:
+
+    ============== =============================================================
+    ``event_loop`` AsyncIO event loop to use (defaults to the global event loop)
+    ============== =============================================================
     """
 
-    def start(self, scheduler, alias):
-        super(AsyncIOExecutor, self).start(scheduler, alias)
-        self._eventloop = scheduler._eventloop
-        self._pending_futures = set()
+    _eventloop = None
+    _timeout = None
 
+    def start(self, paused=False):
+        if not self._eventloop:
+            self._eventloop = asyncio.get_event_loop()
+
+        super(AsyncIOScheduler, self).start(paused)
+
+    @run_in_event_loop
     def shutdown(self, wait=True):
-        # There is no way to honor wait=True without converting this method into a coroutine method
-        for f in self._pending_futures:
-            if not f.done():
-                f.cancel()
+        super(AsyncIOScheduler, self).shutdown(wait)
+        self._stop_timer()
 
-        self._pending_futures.clear()
+    def _configure(self, config):
+        self._eventloop = maybe_ref(config.pop('event_loop', None))
+        super(AsyncIOScheduler, self)._configure(config)
 
-    def _do_submit_job(self, job, run_times):
-        def callback(f):
-            self._pending_futures.discard(f)
-            try:
-                events = f.result()
-            except BaseException:
-                self._run_job_error(job.id, *sys.exc_info()[1:])
-            else:
-                self._run_job_success(job.id, events)
+    def _start_timer(self, wait_seconds):
+        self._stop_timer()
+        if wait_seconds is not None:
+            self._timeout = self._eventloop.call_later(wait_seconds, self.wakeup)
 
-        if iscoroutinefunction_partial(job.func):
-            coro = run_coroutine_job(job, job._jobstore_alias, run_times, self._logger.name)
-            f = self._eventloop.create_task(coro)
-        else:
-            f = self._eventloop.run_in_executor(None, run_job, job, job._jobstore_alias, run_times,
-                                                self._logger.name)
+    def _stop_timer(self):
+        if self._timeout:
+            self._timeout.cancel()
+            del self._timeout
 
-        f.add_done_callback(callback)
-        self._pending_futures.add(f)
+    @run_in_event_loop
+    def wakeup(self):
+        self._stop_timer()
+        wait_seconds = self._process_jobs()
+        self._start_timer(wait_seconds)
+
+    def _create_default_executor(self):
+        from apscheduler.executors.asyncio import AsyncIOExecutor
+        return AsyncIOExecutor()

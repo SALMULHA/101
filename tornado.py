@@ -1,54 +1,63 @@
 from __future__ import absolute_import
 
-import sys
-from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
+from functools import wraps
 
-from tornado.gen import convert_yielded
-
-from apscheduler.executors.base import BaseExecutor, run_job
+from apscheduler.schedulers.base import BaseScheduler
+from apscheduler.util import maybe_ref
 
 try:
-    from apscheduler.executors.base_py3 import run_coroutine_job
-    from apscheduler.util import iscoroutinefunction_partial
-except ImportError:
-    def iscoroutinefunction_partial(func):
-        return False
+    from tornado.ioloop import IOLoop
+except ImportError:  # pragma: nocover
+    raise ImportError('TornadoScheduler requires tornado installed')
 
 
-class TornadoExecutor(BaseExecutor):
+def run_in_ioloop(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        self._ioloop.add_callback(func, self, *args, **kwargs)
+    return wrapper
+
+
+class TornadoScheduler(BaseScheduler):
     """
-    Runs jobs either in a thread pool or directly on the I/O loop.
+    A scheduler that runs on a Tornado IOLoop.
 
-    If the job function is a native coroutine function, it is scheduled to be run directly in the
-    I/O loop as soon as possible. All other functions are run in a thread pool.
+    The default executor can run jobs based on native coroutines (``async def``).
 
-    Plugin alias: ``tornado``
-
-    :param int max_workers: maximum number of worker threads in the thread pool
+    =========== ===============================================================
+    ``io_loop`` Tornado IOLoop instance to use (defaults to the global IO loop)
+    =========== ===============================================================
     """
 
-    def __init__(self, max_workers=10):
-        super(TornadoExecutor, self).__init__()
-        self.executor = ThreadPoolExecutor(max_workers)
+    _ioloop = None
+    _timeout = None
 
-    def start(self, scheduler, alias):
-        super(TornadoExecutor, self).start(scheduler, alias)
-        self._ioloop = scheduler._ioloop
+    @run_in_ioloop
+    def shutdown(self, wait=True):
+        super(TornadoScheduler, self).shutdown(wait)
+        self._stop_timer()
 
-    def _do_submit_job(self, job, run_times):
-        def callback(f):
-            try:
-                events = f.result()
-            except BaseException:
-                self._run_job_error(job.id, *sys.exc_info()[1:])
-            else:
-                self._run_job_success(job.id, events)
+    def _configure(self, config):
+        self._ioloop = maybe_ref(config.pop('io_loop', None)) or IOLoop.current()
+        super(TornadoScheduler, self)._configure(config)
 
-        if iscoroutinefunction_partial(job.func):
-            f = run_coroutine_job(job, job._jobstore_alias, run_times, self._logger.name)
-        else:
-            f = self.executor.submit(run_job, job, job._jobstore_alias, run_times,
-                                     self._logger.name)
+    def _start_timer(self, wait_seconds):
+        self._stop_timer()
+        if wait_seconds is not None:
+            self._timeout = self._ioloop.add_timeout(timedelta(seconds=wait_seconds), self.wakeup)
 
-        f = convert_yielded(f)
-        f.add_done_callback(callback)
+    def _stop_timer(self):
+        if self._timeout:
+            self._ioloop.remove_timeout(self._timeout)
+            del self._timeout
+
+    def _create_default_executor(self):
+        from apscheduler.executors.tornado import TornadoExecutor
+        return TornadoExecutor()
+
+    @run_in_ioloop
+    def wakeup(self):
+        self._stop_timer()
+        wait_seconds = self._process_jobs()
+        self._start_timer(wait_seconds)

@@ -1,25 +1,62 @@
 from __future__ import absolute_import
 
-from apscheduler.executors.base import BaseExecutor, run_job
+from functools import wraps
+
+from apscheduler.schedulers.base import BaseScheduler
+from apscheduler.util import maybe_ref
+
+try:
+    from twisted.internet import reactor as default_reactor
+except ImportError:  # pragma: nocover
+    raise ImportError('TwistedScheduler requires Twisted installed')
 
 
-class TwistedExecutor(BaseExecutor):
+def run_in_reactor(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        self._reactor.callFromThread(func, self, *args, **kwargs)
+    return wrapper
+
+
+class TwistedScheduler(BaseScheduler):
     """
-    Runs jobs in the reactor's thread pool.
+    A scheduler that runs on a Twisted reactor.
 
-    Plugin alias: ``twisted``
+    Extra options:
+
+    =========== ========================================================
+    ``reactor`` Reactor instance to use (defaults to the global reactor)
+    =========== ========================================================
     """
 
-    def start(self, scheduler, alias):
-        super(TwistedExecutor, self).start(scheduler, alias)
-        self._reactor = scheduler._reactor
+    _reactor = None
+    _delayedcall = None
 
-    def _do_submit_job(self, job, run_times):
-        def callback(success, result):
-            if success:
-                self._run_job_success(job.id, result)
-            else:
-                self._run_job_error(job.id, result.value, result.tb)
+    def _configure(self, config):
+        self._reactor = maybe_ref(config.pop('reactor', default_reactor))
+        super(TwistedScheduler, self)._configure(config)
 
-        self._reactor.getThreadPool().callInThreadWithCallback(
-            callback, run_job, job, job._jobstore_alias, run_times, self._logger.name)
+    @run_in_reactor
+    def shutdown(self, wait=True):
+        super(TwistedScheduler, self).shutdown(wait)
+        self._stop_timer()
+
+    def _start_timer(self, wait_seconds):
+        self._stop_timer()
+        if wait_seconds is not None:
+            self._delayedcall = self._reactor.callLater(wait_seconds, self.wakeup)
+
+    def _stop_timer(self):
+        if self._delayedcall and self._delayedcall.active():
+            self._delayedcall.cancel()
+            del self._delayedcall
+
+    @run_in_reactor
+    def wakeup(self):
+        self._stop_timer()
+        wait_seconds = self._process_jobs()
+        self._start_timer(wait_seconds)
+
+    def _create_default_executor(self):
+        from apscheduler.executors.twisted import TwistedExecutor
+        return TwistedExecutor()
