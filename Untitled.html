@@ -1,0 +1,45 @@
+<!-- في قالب daily.html -->
+<div class="card mb-3">
+    <div class="card-header">
+        <h5>التمام اليومي - {{ selected_date }}</h5>
+        <small class="text-muted">حالة اليوم السابق: {{ previous_date }}</small>
+    </div>
+    <div class="card-body">
+        {% for person in personnel_list %}
+        <div class="row mb-2 align-items-center">
+            <div class="col-md-3">
+                <strong>{{ person.full_name }}</strong>
+                <br>
+                <small class="text-muted">{{ person.rank.name if person.rank else '' }}</small>
+            </div>
+            
+            <!-- عرض حالة اليوم السابق -->
+            <div class="col-md-2">
+                <label class="form-label">حالة اليوم السابق:</label>
+                {% if previous_attendance_records.get(person.id) %}
+                    <span class="badge bg-info">
+                        {{ previous_attendance_records[person.id]['status_name'] }}
+                    </span>
+                {% else %}
+                    <span class="badge bg-secondary">غير محدد</span>
+                {% endif %}
+            </div>
+            
+            <!-- حقول إدخال حالة اليوم الحالي -->
+            <div class="col-md-3">
+                <select name="status_{{ person.id }}" class="form-select" required>
+                    <option value="">اختر الحالة</option>
+                    {% for status in statuses %}
+                    <option value="{{ status.id }}" 
+                        {% if attendance_records.get(person.id) and attendance_records[person.id]['status_id'] == status.id %}selected{% endif %}>
+                        {{ status.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <!-- باقي الحقول... -->
+        </div>
+        {% endfor %}
+    </div>
+</div>

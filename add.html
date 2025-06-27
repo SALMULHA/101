@@ -1,0 +1,238 @@
+{% extends "base.html" %}
+
+{% block title %}إضافة فرد جديد - منظومة التمام{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="fas fa-user-plus"></i> إضافة فرد جديد</h2>
+        </div>
+    </div>
+
+    <!-- إضافة تبويبات للاختيار بين الإدخال اليدوي ورفع Excel -->
+    <ul class="nav nav-tabs" id="addPersonnelTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="manual-tab" data-bs-toggle="tab" data-bs-target="#manual" type="button" role="tab" aria-controls="manual" aria-selected="true">
+                <i class="fas fa-edit"></i> إدخال يدوي
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="excel-tab" data-bs-toggle="tab" data-bs-target="#excel" type="button" role="tab" aria-controls="excel" aria-selected="false">
+                <i class="fas fa-file-excel"></i> رفع ملف Excel
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="addPersonnelTabsContent">
+        <!-- تبويب الإدخال اليدوي -->
+        <div class="tab-pane fade show active" id="manual" role="tabpanel" aria-labelledby="manual-tab">
+            <div class="card mt-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">بيانات الفرد</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('personnel.add') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="military_id" class="form-label">الرقم العسكري <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="military_id" name="military_id" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="full_name" class="form-label">الاسم الكامل <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="full_name" name="full_name" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="rank_id" class="form-label">الرتبة <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <select class="form-select" id="rank_id" name="rank_id" required>
+                                        <option value="">اختر الرتبة</option>
+                                        {% for rank in ranks %}
+                                        <option value="{{ rank.id }}">{{ rank.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#addRankModal">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="department_id" class="form-label">القسم/الإدارة <span class="text-danger">*</span></label>
+                                <select class="form-select" id="department_id" name="department_id" required>
+                                    <option value="">اختر القسم/الإدارة</option>
+                                    {% for department in departments %}
+                                    <option value="{{ department.id }}">{{ department.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="status_id" class="form-label">الحالة <span class="text-danger">*</span></label>
+                                <select class="form-select" id="status_id" name="status_id" required>
+                                    <option value="">اختر الحالة</option>
+                                    {% for status in statuses %}
+                                    <option value="{{ status.id }}">{{ status.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="phone" class="form-label">رقم الهاتف</label>
+                                <input type="text" class="form-control" id="phone" name="phone">
+                            </div>
+                            <div class="col-12">
+                                <label for="notes" class="form-label">ملاحظات</label>
+                                <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+                            </div>
+                            <div class="col-12 mt-4 text-end">
+                                <a href="{{ url_for('personnel.index') }}" class="btn btn-secondary">إلغاء</a>
+                                <button type="submit" class="btn btn-primary">حفظ</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- تبويب رفع ملف Excel -->
+        <div class="tab-pane fade" id="excel" role="tabpanel" aria-labelledby="excel-tab">
+            <div class="card mt-3">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">رفع ملف Excel</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-info-circle"></i> تعليمات مهمة:</h6>
+                        <ul class="mb-0">
+                            <li>يجب أن يحتوي الملف على الأعمدة التالية: الرقم العسكري، الاسم الكامل، الرتبة، القسم</li>
+                            <li>الأعمدة الاختيارية: رقم الهاتف، الحالة، ملاحظات</li>
+                            <!-- <li>يمكنك تحميل نموذج Excel من <a href="{{ url_for('personnel.download_template') }}" class="alert-link">هنا</a></li> -->
+                        </ul>
+                    </div>
+                    
+                    <form method="POST" action="{{ url_for('personnel.import_personnel') }}" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-3">
+                            <label for="excel_file" class="form-label">اختر ملف Excel <span class="text-danger">*</span></label>
+                            <input type="file" class="form-control" id="excel_file" name="excel_file" accept=".xlsx,.xls" required>
+                            <div class="form-text">الملفات المدعومة: .xlsx, .xls</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="skip_duplicates" name="skip_duplicates" checked>
+                                <label class="form-check-label" for="skip_duplicates">
+                                    تجاهل الأرقام العسكرية المكررة
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-success">
+                                <i class="fas fa-upload"></i> رفع الملف
+                            </button>
+                            <a href="{{ url_for('personnel.download_template') }}" class="btn btn-outline-primary">
+                                <i class="fas fa-download"></i> تحميل النموذج
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- إضافة النافذة المنبثقة لإضافة رتبة جديدة -->
+<div class="modal fade" id="addRankModal" tabindex="-1" aria-labelledby="addRankModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addRankModalLabel">إضافة رتبة جديدة</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="إغلاق"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addRankForm">
+                    <div class="mb-3">
+                        <label for="rankName" class="form-label">اسم الرتبة <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="rankName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="rankCategory" class="form-label">الفئة</label>
+                        <select class="form-select" id="rankCategory">
+                            <option value="">اختر الفئة</option>
+                            <option value="ضابط">ضابط</option>
+                            <option value="ضابط صف">ضابط صف</option>
+                            <option value="جندي">جندي</option>
+                            <option value="عقد">عقد</option>
+                            <option value="مساندة">مساندة</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="btn btn-primary" id="saveRankBtn">حفظ</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // معالجة إضافة رتبة جديدة
+        document.getElementById('saveRankBtn').addEventListener('click', function() {
+            const rankName = document.getElementById('rankName').value;
+            const rankCategory = document.getElementById('rankCategory').value;
+            
+            if (!rankName) {
+                alert('يرجى إدخال اسم الرتبة');
+                return;
+            }
+            
+            // إرسال طلب AJAX لإضافة الرتبة
+            fetch('{{ url_for("personnel.add_rank_ajax") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{% set csrf_token = csrf_token %}'
+                },
+                body: JSON.stringify({
+                    name: rankName,
+                    category: rankCategory
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // إضافة الرتبة الجديدة إلى القائمة
+                    const rankSelect = document.getElementById('rank_id');
+                    const newOption = document.createElement('option');
+                    newOption.value = data.rank.id;
+                    newOption.textContent = data.rank.name;
+                    rankSelect.appendChild(newOption);
+                    
+                    // تحديد الرتبة الجديدة
+                    rankSelect.value = data.rank.id;
+                    
+                    // إغلاق النافذة المنبثقة
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('addRankModal'));
+                    modal.hide();
+                    
+                    // مسح النموذج
+                    document.getElementById('rankName').value = '';
+                    document.getElementById('rankCategory').value = '';
+                    
+                    // عرض رسالة نجاح
+                    alert('تمت إضافة الرتبة بنجاح');
+                } else {
+                    alert(data.message || 'حدث خطأ أثناء إضافة الرتبة');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('حدث خطأ أثناء إضافة الرتبة');
+            });
+        });
+    });
+</script>
+{% endblock %}
+{% endblock %}

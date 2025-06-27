@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block title %}تسجيل التمام اليومي - منظومة التمام{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="fas fa-clipboard-check"></i> تسجيل التمام اليومي</h2>
+        </div>
+    </div>
+
+    <!-- قسم استيراد ملف Excel -->
+    <div class="card mb-4">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">استيراد التمام من ملف Excel</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('attendance.import_excel') }}" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label for="excel_date" class="form-label">التاريخ <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="excel_date" name="date" value="{{ selected_date }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="excel_file" class="form-label">ملف Excel <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control" id="excel_file" name="excel_file" accept=".xlsx, .xls" required>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <p class="text-muted small">
+                        <i class="fas fa-info-circle"></i> يجب أن يحتوي ملف Excel على الأعمدة التالية: الرقم العسكري، الحالة (رقم الحالة)، تاريخ البداية (اختياري)، تاريخ النهاية (اختياري)، ملاحظات (اختياري)
+                    </p>
+                    <a href="{{ url_for('attendance.download_template') }}" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-download"></i> تنزيل قالب Excel
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-file-import"></i> استيراد البيانات
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- قسم تسجيل التمام اليدوي -->
+    <div class="card">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">معلومات التمام</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('attendance.daily') }}" enctype="multipart/form-data">
+                {{ form.csrf_token }} {# <--- أضف هذا السطر #}
+                <div class="row g-3 mb-4">
+                    <div class="col-md-6">
+                        <label for="date" class="form-label">التاريخ <span class="text-danger">*</span></label>
+                        <input type="date" class="form-control" id="date" name="date" value="{{ selected_date }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label for="department_id" class="form-label">القسم/الإدارة</label>
+                        {% if current_user.role.name == 'مدير قسم' %}
+                            <!-- مدير القسم يرى قسمه فقط -->
+                            <input type="text" class="form-control" value="{{ current_user.department.name }}" readonly>
+                            <input type="hidden" name="department_id" value="{{ current_user.department_id }}">
+                        {% else %}
+                            <!-- المدير ومدير النظام يمكنهم اختيار أي قسم -->
+                            <select class="form-select" id="department_id" name="department_id">
+                                <option value="all" {% if not current_department_id %}selected{% endif %}>الكل</option>
+                                {% for department in departments %}
+                                <option value="{{ department.id }}" {% if current_department_id == department.id|string %}selected{% endif %}>
+                                    {{ department.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>الرقم العسكري</th>
+                                <th>الاسم</th>
+                                <th>الرتبة</th>
+                                <th>القسم/الإدارة</th>
+                                <th>الحالة</th>
+                                <th>تاريخ البداية</th>
+                                <th>تاريخ الانتهاء</th>
+                                <th>مرفق PDF</th>
+                                <th>ملاحظات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for person in personnel_list %}
+                            <tr>
+                                <td>{{ person.military_id }}</td>
+                                <td>{{ person.full_name }}</td>
+                                <td>{{ person.rank.name }}</td>
+                                <td>{{ person.department.name }}</td>
+                                <!-- إضافة معلومات مصدر الحالة في الجدول -->
+                                <td>
+                                    <select name="attendance_{{ person.id }}" class="form-control" 
+                                            onchange="markAsManual({{ person.id }})">
+                                            {% if person.id in attendance_records %}data-source="{{ attendance_records[person.id].source_type }}"{% endif %}>
+                                        {% for status in statuses %}
+                                            <option value="{{ status.id }}" 
+                                                    {% if person.id in attendance_records and attendance_records[person.id].status_id == status.id %}selected{% endif %}>
+                                                {{ status.name }}
+                                                {% if person.id in attendance_records and attendance_records[person.id].is_auto_copied %}
+                                                    {% if attendance_records[person.id].source_type == 'copied' %}
+                                                        (منسوخة من {{ attendance_records[person.id].source_date }})
+                                                    {% elif attendance_records[person.id].source_type == 'default' %}
+                                                        (افتراضية)
+                                                    {% endif %}
+                                                {% endif %}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                    <small class="text-muted">{{ status_sources.get(person.id, '') }}</small>
+                                </td>
+                                <td>
+                                    <input type="date" class="form-control date-field" name="start_date_{{ person.id }}" id="start_date_{{ person.id }}" value="{% if attendance_records.get(person.id) and attendance_records[person.id].start_date %}{{ attendance_records[person.id].start_date }}{% endif %}">
+                                </td>
+                                <td>
+                                    <input type="date" class="form-control date-field" name="end_date_{{ person.id }}" id="end_date_{{ person.id }}" value="{% if attendance_records.get(person.id) and attendance_records[person.id].end_date %}{{ attendance_records[person.id].end_date }}{% endif %}">
+                                </td>
+                                <td>
+                                    <input type="file" class="form-control document-field" name="document_{{ person.id }}" id="document_{{ person.id }}" accept=".pdf">
+                                </td>
+                                <td>
+                                    <input type="text" class="form-control" name="notes_{{ person.id }}" value="{% if attendance_records.get(person.id) %}{{ attendance_records[person.id].notes }}{% endif %}">
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="row mt-4">
+                    <div class="col-12 text-end">
+                        <a href="{{ url_for('attendance.index') }}" class="btn btn-secondary">إلغاء</a>
+                        <button type="submit" class="btn btn-primary">حفظ التمام</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // إضافة معالج تغيير القسم
+        const departmentSelect = document.getElementById('department_id');
+        const dateInput = document.getElementById('date');
+        
+        // تعيين القيم المحددة من URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const selectedDepartment = urlParams.get('department_id');
+        const selectedDate = urlParams.get('date');
+        
+        if (selectedDepartment) {
+            departmentSelect.value = selectedDepartment;
+        }
+        
+        // معالج تغيير القسم أو التاريخ
+        function updateFilter() {
+            const departmentId = departmentSelect.value;
+            const date = dateInput.value;
+            
+            // بناء URL جديد مع المعاملات
+            const params = new URLSearchParams();
+            if (date) params.set('date', date);
+            if (departmentId) params.set('department_id', departmentId);
+            
+            // إعادة تحميل الصفحة مع المعاملات الجديدة
+            window.location.href = `${window.location.pathname}?${params.toString()}`;
+        }
+        
+        departmentSelect.addEventListener('change', updateFilter);
+        dateInput.addEventListener('change', updateFilter);
+        
+        // تفعيل/تعطيل حقول التاريخ والمرفقات بناءً على الحالة المختارة
+        const statusSelects = document.querySelectorAll('select[name^="attendance_"]');
+        
+        function updateFields(select) {
+            const personId = select.name.split('_')[1];
+            const statusId = parseInt(select.value);
+            
+            // الحالات التي تتطلب تواريخ (مثل الإجازة، الانتداب، إلخ)
+            const needsDates = statusId !== 1 && statusId !== 2; // ليس حاضر أو غائب
+            
+            const startDateField = document.getElementById(`start_date_${personId}`);
+            const endDateField = document.getElementById(`end_date_${personId}`);
+            const documentField = document.getElementById(`document_${personId}`);
+            
+            if (startDateField) startDateField.disabled = !needsDates;
+            if (endDateField) endDateField.disabled = !needsDates;
+            if (documentField) documentField.removeAttribute('required');
+        }
+        
+        // تطبيق التحديثات عند تحميل الصفحة
+        statusSelects.forEach(select => {
+            updateFields(select);
+            
+            // تطبيق التحديثات عند تغيير الحالة
+            select.addEventListener('change', function() {
+                updateFields(this);
+            });
+        });
+    });
+</script>
+<script>
+function markAsManual(personnelId) {
+    // إضافة مؤشر لتمييز التغييرات اليدوية
+    const select = document.querySelector(`select[name="attendance_${personnelId}"]`);
+    const small = select.nextElementSibling;
+    if (small) {
+        small.textContent = 'تم التعديل يدوياً';
+        small.className = 'text-info';
+    }
+}
+</script>
+{% endblock %}

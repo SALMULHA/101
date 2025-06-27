@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+
+{% block title %}عرض بيانات الفرد - منظومة التمام{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="fas fa-user"></i> عرض بيانات الفرد</h2>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header bg-light">
+            <h5 class="mb-0">بيانات الفرد</h5>
+        </div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">الرقم العسكري:</label>
+                    <p>{{ person.military_id }}</p>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">الاسم الكامل:</label>
+                    <p>{{ person.full_name }}</p>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">الرتبة:</label>
+                    <p>{{ person.rank.name }}</p>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">القسم/الإدارة:</label>
+                    <p>{{ person.department.name }}</p>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">الحالة:</label>
+                    {% if person.status_id %}
+                        <p>{{ person.status.name }}</p>
+                    {% else %}
+                        <p>غير محدد</p>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">رقم الهاتف:</label>
+                    <p>{{ person.phone or 'غير متوفر' }}</p>
+                </div>
+                <div class="col-12">
+                    <label class="form-label fw-bold">ملاحظات:</label>
+                    <p>{{ person.notes or 'لا توجد ملاحظات' }}</p>
+                </div>
+                <div class="col-12 mt-4 text-end">
+                    <a href="{{ url_for('personnel.index') }}" class="btn btn-secondary">العودة للقائمة</a>
+                    {% if current_user.is_admin %}
+                    <a href="{{ url_for('personnel.edit', id=person.id) }}" class="btn btn-primary">تعديل</a>
+                    <button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">حذف</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if current_user.is_admin %}
+<!-- Modal for Delete Confirmation -->
+<div class="modal fade" id="deleteModal" tabindex="-1" aria-labelledby="deleteModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteModalLabel">تأكيد الحذف</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                هل أنت متأكد من حذف بيانات الفرد "{{ person.full_name }}"؟
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <form method="POST" action="{{ url_for('personnel.delete', id=person.id) }}">
+                    <button type="submit" class="btn btn-danger">تأكيد الحذف</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

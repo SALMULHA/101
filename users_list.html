@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}إدارة المستخدمين - منظومة التمام{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="fas fa-users"></i> إدارة المستخدمين</h2>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">قائمة المستخدمين</h5>
+            <div class="d-flex gap-2">
+                <select class="form-select" id="departmentFilter" style="width: auto;">
+                    <option value="">جميع الأقسام</option>
+                    {% for dept in departments %}
+                    <option value="{{ dept.name }}">{{ dept.name }}</option>
+                    {% endfor %}
+                    <option value="غير محدد">غير محدد</option>
+                </select>
+                <a href="{{ url_for('auth.add_user') }}" class="btn btn-primary">
+                    <i class="fas fa-plus"></i> إضافة مستخدم جديد
+                </a>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>اسم المستخدم</th>
+                            <th>الاسم الكامل</th>
+                            <th>الدور</th>
+                            <th>القسم</th>
+                            <th>الحالة</th>
+                            <th>آخر دخول</th>
+                            <th>الإجراءات</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in users %}
+                        <tr>
+                            <td>{{ user.username }}</td>
+                            <td>{{ user.full_name }}</td>
+                            <td>
+                                <span class="badge bg-{% if user.role.name == 'مدير' %}danger{% elif user.role.name == 'مسؤول قسم' %}warning{% else %}secondary{% endif %}">
+                                    {{ user.role.name }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if user.department %}
+                                    <span class="badge bg-info">
+                                        <i class="fas fa-building"></i> {{ user.department.name }}
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-secondary">
+                                        <i class="fas fa-minus"></i> غير محدد
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if user.is_active %}
+                                    <span class="badge bg-success">نشط</span>
+                                {% else %}
+                                    <span class="badge bg-danger">غير نشط</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ user.last_login.strftime('%Y-%m-%d %H:%M') if user.last_login else 'لم يسجل دخول' }}</td>
+                            <td>
+                                <a href="{{ url_for('auth.view_user', user_id=user.id) }}" class="btn btn-sm btn-info me-1">
+                                    <i class="fas fa-eye"></i> عرض
+                                </a>
+                                <a href="{{ url_for('auth.edit_user', user_id=user.id) }}" class="btn btn-sm btn-primary me-1">
+                                    <i class="fas fa-edit"></i> تعديل
+                                </a>
+                                {% if user.id != current_user.id %}
+                                <button class="btn btn-sm btn-danger" onclick="confirmDelete('هل أنت متأكد من حذف هذا المستخدم؟', 'delete-form-{{ user.id }}')">
+                                    <i class="fas fa-trash"></i> حذف
+                                </button>
+                                <form id="delete-form-{{ user.id }}" action="{{ url_for('auth.delete_user', user_id=user.id) }}" method="POST" style="display: none;">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                </form>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+<script>
+document.getElementById('departmentFilter').addEventListener('change', function() {
+    const filterValue = this.value.toLowerCase();
+    const rows = document.querySelectorAll('tbody tr');
+    
+    rows.forEach(row => {
+        const departmentCell = row.cells[3]; // عمود القسم
+        const departmentText = departmentCell.textContent.toLowerCase();
+        
+        if (filterValue === '' || departmentText.includes(filterValue)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+</script>

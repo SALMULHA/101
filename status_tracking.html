@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}تتبع إشعارات الحالات{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h3 class="card-title">
+                        <i class="fas fa-bell"></i> تتبع إشعارات الحالات
+                    </h3>
+                    <div>
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createNotificationModal">
+                            <i class="fas fa-plus"></i> إنشاء إشعار يدوي
+                        </button>
+                        <a href="{{ url_for('notifications.index') }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-right"></i> العودة للإشعارات
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- إحصائيات الحالات -->
+                    <div class="row mb-4">
+                        <div class="col-12">
+                            <h5 class="mb-3">إحصائيات الحالات المتتبعة</h5>
+                            <div class="row">
+                                {% for status_name in tracked_statuses %}
+                                {% set stats = status_stats[status_name] %}
+                                <div class="col-md-4 col-lg-3 mb-3">
+                                    <div class="card border-start border-4 
+                                        {% if status_name in ['مفقود', 'وفاة', 'شهيد', 'أسير'] %}border-danger
+                                        {% elif status_name in ['حبس بأحكام ضبطية', 'حبس من قبل محكمة عسكرية', 'حبس من قبل ع الدائمة والعليا', 'توقيف', 'حبس من قبل المحاكم المدنية', 'جريح'] %}border-warning
+                                        {% else %}border-info{% endif %}">
+                                        <div class="card-body p-3">
+                                            <h6 class="card-title text-truncate" title="{{ status_name }}">{{ status_name }}</h6>
+                                            <div class="d-flex justify-content-between">
+                                                <small class="text-muted">الحاليين:</small>
+                                                <span class="badge bg-primary">{{ stats.current_count }}</span>
+                                            </div>
+                                            <div class="d-flex justify-content-between">
+                                                <small class="text-muted">الإشعارات (30 يوم):</small>
+                                                <span class="badge bg-secondary">{{ stats.recent_notifications }}</span>
+                                            </div>
+                                            {% if stats.current_count > 0 %}
+                                            <button class="btn btn-sm btn-outline-primary mt-2 w-100" 
+                                                    onclick="viewStatusDetails('{{ status_name }}')">
+                                                عرض التفاصيل
+                                            </button>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- آخر الإشعارات -->
+                    <div class="row">
+                        <div class="col-12">
+                            <h5 class="mb-3">آخر الإشعارات (7 أيام)</h5>
+                            {% if recent_notifications %}
+                            <div class="list-group">
+                                {% for notification in recent_notifications %}
+                                <div class="list-group-item">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <h6 class="mb-1">
+                                            {% if notification.notification_type == 'danger' %}
+                                                <i class="fas fa-exclamation-triangle text-danger"></i>
+                                            {% elif notification.notification_type == 'warning' %}
+                                                <i class="fas fa-exclamation-circle text-warning"></i>
+                                            {% elif notification.notification_type == 'info' %}
+                                                <i class="fas fa-info-circle text-info"></i>
+                                            {% else %}
+                                                <i class="fas fa-check-circle text-success"></i>
+                                            {% endif %}
+                                            {{ notification.title }}
+                                        </h6>
+                                        <small class="text-muted">{{ notification.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                                    </div>
+                                    <p class="mb-1">{{ notification.message }}</p>
+                                    {% if notification.personnel %}
+                                    <small class="text-muted">
+                                        <i class="fas fa-user"></i> 
+                                        {{ notification.personnel.full_name }} - {{ notification.personnel.military_id }}
+                                    </small>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i> لا توجد إشعارات حديثة
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal لإنشاء إشعار يدوي -->
+<div class="modal fade" id="createNotificationModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">إنشاء إشعار يدوي</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="notificationForm">
+                    <div class="mb-3">
+                        <label for="personnelSelect" class="form-label">اختر الفرد</label>
+                        <select class="form-select" id="personnelSelect" required>
+                            <option value="">اختر الفرد...</option>
+                            <!-- سيتم ملؤها بـ JavaScript -->
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="statusSelect" class="form-label">نوع الحالة</label>
+                        <select class="form-select" id="statusSelect" required>
+                            <option value="">اختر الحالة...</option>
+                            {% for status in tracked_statuses %}
+                            <option value="{{ status }}">{{ status }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="customMessage" class="form-label">رسالة مخصصة (اختياري)</label>
+                        <textarea class="form-control" id="customMessage" rows="3" 
+                                placeholder="اتركه فارغاً لاستخدام الرسالة الافتراضية"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                <button type="button" class="btn btn-primary" onclick="createNotification()">إنشاء الإشعار</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// تحميل قائمة الأفراد عند فتح الـ modal
+$('#createNotificationModal').on('show.bs.modal', function() {
+    loadPersonnelList();
+});
+
+function loadPersonnelList() {
+    fetch('/api/personnel/active')
+        .then(response => response.json())
+        .then(data => {
+            const select = document.getElementById('personnelSelect');
+            select.innerHTML = '<option value="">اختر الفرد...</option>';
+            
+            data.forEach(person => {
+                const option = document.createElement('option');
+                option.value = person.id;
+                option.textContent = `${person.full_name} - ${person.military_id}`;
+                select.appendChild(option);
+            });
+        })
+        .catch(error => {
+            console.error('خطأ في تحميل قائمة الأفراد:', error);
+            showAlert('خطأ في تحميل قائمة الأفراد', 'danger');
+        });
+}
+
+function createNotification() {
+    const personnelId = document.getElementById('personnelSelect').value;
+    const statusName = document.getElementById('statusSelect').value;
+    const customMessage = document.getElementById('customMessage').value;
+    
+    if (!personnelId || !statusName) {
+        showAlert('يرجى اختيار الفرد ونوع الحالة', 'warning');
+        return;
+    }
+    
+    const data = {
+        personnel_id: parseInt(personnelId),
+        status_name: statusName,
+        custom_message: customMessage
+    };
+    
+    fetch('{{ url_for("notifications.create_status_notification_manual") }}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert(data.message, 'success');
+            $('#createNotificationModal').modal('hide');
+            // إعادة تحميل الصفحة لإظهار الإشعار الجديد
+            setTimeout(() => {
+                location.reload();
+            }, 1500);
+        } else {
+            showAlert(data.error || 'حدث خطأ غير متوقع', 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('خطأ:', error);
+        showAlert('حدث خطأ في إنشاء الإشعار', 'danger');
+    });
+}
+
+function viewStatusDetails(statusName) {
+    window.open(`{{ url_for('notifications.get_status_notifications', status_name='') }}${encodeURIComponent(statusName)}`, '_blank');
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const container = document.querySelector('.container-fluid');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // إزالة التنبيه تلقائياً بعد 5 ثوان
+    setTimeout(() => {
+        alertDiv.remove();
+    }, 5000);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,1 @@
+ALTER TABLE personnel ADD COLUMN status_id INTEGER REFERENCES attendance_statuses(id);

@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+
+{% block title %}تعديل حالة تمام{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">تعديل حالة تمام</h4>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        <div class="mb-3">
+                            <label for="name" class="form-label">اسم الحالة</label>
+                            <input type="text" class="form-control" id="name" name="name" value="{{ status.name }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="description" class="form-label">الوصف</label>
+                            <textarea class="form-control" id="description" name="description" rows="3">{{ status.description }}</textarea>
+                        </div>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="requires_document" name="requires_document" {% if status.requires_document %}checked{% endif %}>
+                            <label class="form-check-label" for="requires_document">يتطلب وثيقة</label>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('admin.statuses') }}" class="btn btn-secondary">إلغاء</a>
+                            <button type="submit" class="btn btn-primary">حفظ التغييرات</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

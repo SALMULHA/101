@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+
+{% block title %}إحصائيات التمام - منظومة التمام{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- رأس الصفحة -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2><i class="fas fa-chart-pie"></i> إحصائيات التمام العسكري</h2>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('attendance.index') }}" class="btn btn-secondary me-2">
+                <i class="fas fa-arrow-left"></i> العودة
+            </a>
+            <a href="{{ url_for('attendance.export_statistics', date=selected_date.strftime('%Y-%m-%d')) }}" class="btn btn-success">
+                <i class="fas fa-file-excel"></i> تصدير Excel
+            </a>
+        </div>
+    </div>
+
+    <!-- اختيار التاريخ -->
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="fas fa-calendar"></i> اختيار التاريخ</h5>
+        </div>
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('attendance.statistics') }}" class="row g-3">
+                <div class="col-md-4">
+                    <label for="date" class="form-label">التاريخ</label>
+                    <input type="date" class="form-control" id="date" name="date" value="{{ selected_date.strftime('%Y-%m-%d') }}">
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search"></i> عرض الإحصائيات
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ملخص إجمالي -->
+    <div class="card mb-4">
+        <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="fas fa-chart-bar"></i> الملخص الإجمالي - {{ selected_date.strftime('%Y-%m-%d') }}</h5>
+        </div>
+        <div class="card-body">
+            <div class="row text-center">
+                <div class="col-md-3">
+                    <div class="card bg-light border-primary">
+                        <div class="card-body">
+                            <h2 class="text-primary mb-2">{{ total_stats.total }}</h2>
+                            <h5 class="text-muted mb-0">إجمالي الأفراد</h5>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <h2 class="mb-2">{{ total_stats.present }}</h2>
+                            <h5 class="mb-0">الحاضرون</h5>
+                            <small>{{ ((total_stats.present / total_stats.total * 100) if total_stats.total > 0 else 0) | round(1) }}%</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-danger text-white">
+                        <div class="card-body">
+                            <h2 class="mb-2">{{ total_stats.absent }}</h2>
+                            <h5 class="mb-0">الغائبون</h5>
+                            <small>{{ ((total_stats.absent / total_stats.total * 100) if total_stats.total > 0 else 0) | round(1) }}%</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-dark">
+                        <div class="card-body">
+                            <h2 class="mb-2">{{ total_stats.other }}</h2>
+                            <h5 class="mb-0">حالات أخرى</h5>
+                            <small>{{ ((total_stats.other / total_stats.total * 100) if total_stats.total > 0 else 0) | round(1) }}%</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- إحصائيات تفصيلية لجميع الحالات -->
+    <div class="card mb-4">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0"><i class="fas fa-list-alt"></i> إحصائيات تفصيلية لجميع الحالات</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                {% for status_name in required_statuses %}
+                {% set count = all_status_counts.get(status_name, 0) %}
+                <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6 mb-3">
+                    <div class="card h-100 text-center 
+                        {% if status_name == 'حاضر' %}bg-success text-white
+                        {% elif status_name == 'غياب' %}bg-danger text-white
+                        {% elif status_name == 'هروب' %}bg-warning text-dark
+                        {% elif status_name in ['مفقود', 'وفاة', 'شهيد'] %}bg-dark text-white
+                        {% elif status_name in ['المستشفى', 'سرية الطبية', 'راحة طبية', 'علاج خارج ليبيا'] %}bg-info text-white
+                        {% elif 'حبس' in status_name or status_name == 'توقيف' %}bg-secondary text-white
+                        {% elif 'إجازة' in status_name or 'أجازة' in status_name %}bg-primary text-white
+                        {% else %}bg-light border
+                        {% endif %}">
+                        <div class="card-body py-2">
+                            <h6 class="card-title mb-1" style="font-size: 0.85rem;">{{ status_name }}</h6>
+                            <h4 class="mb-1">{{ count }}</h4>
+                            <small class="{% if status_name not in ['حاضر', 'غياب', 'هروب', 'مفقود', 'وفاة', 'شهيد'] and 'حبس' not in status_name and status_name != 'توقيف' and 'إجازة' not in status_name and 'أجازة' not in status_name and status_name not in ['المستشفى', 'سرية الطبية', 'راحة طبية', 'علاج خارج ليبيا'] %}text-muted{% endif %}">
+                                {{ ((count / total_stats.total * 100) if total_stats.total > 0 else 0) | round(1) }}%
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- إحصائيات حسب تصنيف الرتب -->
+    <div class="card mb-4">
+        <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0"><i class="fas fa-users"></i> إحصائيات حسب تصنيف الرتب</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                {% for category_name, category_data in categories_stats.items() %}
+                <div class="col-lg-6 col-xl-4 mb-4">
+                    <div class="card h-100">
+                        <div class="card-header bg-gradient text-white" style="background: linear-gradient(45deg, #007bff, #0056b3);">
+                            <h6 class="mb-0">
+                                <i class="fas fa-star"></i> {{ category_name }}
+                                <span class="badge bg-light text-dark ms-2">{{ category_data.totals.total }}</span>
+                            </h6>
+                        </div>
+                        <div class="card-body p-2">
+                            <!-- ملخص سريع -->
+                            <div class="row text-center mb-3">
+                                <div class="col-4">
+                                    <div class="bg-success text-white rounded p-2">
+                                        <small>حاضر</small><br>
+                                        <strong>{{ category_data.totals.present }}</strong>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="bg-danger text-white rounded p-2">
+                                        <small>غائب</small><br>
+                                        <strong>{{ category_data.totals.absent }}</strong>
+                                    </div>
+                                </div>
+                                <div class="col-4">
+                                    <div class="bg-warning text-dark rounded p-2">
+                                        <small>أخرى</small><br>
+                                        <strong>{{ category_data.totals.other }}</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- رسم بياني -->
+                            <div class="mb-3" style="height: 200px;">
+                                <canvas id="chart_{{ loop.index }}" width="400" height="200"></canvas>
+                            </div>
+                            
+                            <!-- جدول تفصيلي مختصر -->
+                            <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
+                                <table class="table table-sm table-striped mb-0">
+                                    <thead class="table-dark">
+                                        <tr>
+                                            <th style="font-size: 0.75rem;">الحالة</th>
+                                            <th style="font-size: 0.75rem;">العدد</th>
+                                            <th style="font-size: 0.75rem;">النسبة</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for status_name in required_statuses %}
+                                        {% set count = category_data.status_details.get(status_name, 0) %}
+                                        {% if count > 0 %}
+                                        <tr>
+                                            <td style="font-size: 0.75rem;">{{ status_name }}</td>
+                                            <td><span class="badge bg-primary">{{ count }}</span></td>
+                                            <td style="font-size: 0.75rem;">
+                                                {{ ((count / category_data.totals.total * 100) if category_data.totals.total > 0 else 0) | round(1) }}%
+                                            </td>
+                                        </tr>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // إنشاء الرسوم البيانية لكل فئة
+    {% for category_name, category_data in categories_stats.items() %}
+    (function() {
+        const ctx{{ loop.index }} = document.getElementById('chart_{{ loop.index }}');
+        if (!ctx{{ loop.index }}) {
+            console.error('Canvas element with id "chart_{{ loop.index }}" not found');
+            return;
+        }
+        
+        const context = ctx{{ loop.index }}.getContext('2d');
+        
+        // جمع البيانات للرسم البياني (أهم 5 حالات فقط)
+        const allData = [];
+        {% for status_name in required_statuses %}
+        {% set count = category_data.status_details.get(status_name, 0) %}
+        {% if count > 0 %}
+        allData.push({label: '{{ status_name|e }}', value: {{ count }}});
+        {% endif %}
+        {% endfor %}
+        
+        // ترتيب البيانات وأخذ أهم 5 حالات
+        allData.sort((a, b) => b.value - a.value);
+        const topData = allData.slice(0, 5);
+        
+        const labels = topData.map(item => item.label);
+        const data = topData.map(item => item.value);
+        
+        // التحقق من وجود بيانات
+        if (labels.length === 0 || data.length === 0) {
+            context.font = '14px Arial';
+            context.fillStyle = '#666';
+            context.textAlign = 'center';
+            context.fillText('لا توجد بيانات', ctx{{ loop.index }}.width/2, ctx{{ loop.index }}.height/2);
+            return;
+        }
+        
+        const chartData = {
+            labels: labels,
+            datasets: [{
+                data: data,
+                backgroundColor: [
+                    '#28a745', '#dc3545', '#ffc107', '#17a2b8', '#6c757d'
+                ],
+                borderWidth: 2,
+                borderColor: '#fff'
+            }]
+        };
+        
+        try {
+            new Chart(context, {
+                type: 'doughnut',
+                data: chartData,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: {
+                                font: {
+                                    size: 10
+                                },
+                                padding: 8,
+                                usePointStyle: true
+                            }
+                        },
+                        title: {
+                            display: true,
+                            text: 'أهم 5 حالات - {{ category_name|e }}',
+                            font: {
+                                size: 12
+                            }
+                        }
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error creating chart {{ loop.index }}:', error);
+        }
+    })();
+    {% endfor %}
+});
+</script>
+{% endblock %}

@@ -1,0 +1,135 @@
+/* منظومة التمام - الأنماط الرئيسية */
+
+/* تعديلات عامة */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #f8f9fa;
+}
+
+/* تنسيق الجداول */
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+.table th {
+    background-color: #f1f1f1;
+    font-weight: 600;
+}
+
+/* بطاقات الإحصائيات */
+.stat-card {
+    border-radius: 10px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: transform 0.3s;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+}
+
+.stat-card .card-body {
+    padding: 1.5rem;
+}
+
+.stat-card .stat-icon {
+    font-size: 2.5rem;
+    opacity: 0.8;
+}
+
+.stat-card .stat-value {
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+.stat-card .stat-label {
+    font-size: 1rem;
+    color: #6c757d;
+}
+
+/* أزرار الإجراءات */
+.btn-action {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    line-height: 32px;
+    text-align: center;
+    border-radius: 4px;
+    margin-right: 5px;
+}
+
+/* نموذج البحث */
+.search-form {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* تنسيق الصفحة الرئيسية */
+.dashboard-header {
+    background-color: #e9ecef;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+/* تنسيق الشريط الجانبي */
+.sidebar {
+    background-color: #343a40;
+    color: white;
+    min-height: calc(100vh - 56px);
+}
+
+.sidebar .nav-link {
+    color: rgba(255, 255, 255, 0.8);
+    padding: 0.5rem 1rem;
+    border-radius: 5px;
+    margin: 2px 0;
+}
+
+.sidebar .nav-link:hover {
+    color: white;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar .nav-link.active {
+    color: white;
+    background-color: #007bff;
+}
+
+/* تنسيق الفورم */
+.form-label {
+    font-weight: 600;
+}
+
+/* تنسيق الصفحة غير موجودة */
+.error-template {
+    padding: 40px 15px;
+    text-align: center;
+}
+
+.error-actions {
+    margin-top: 15px;
+    margin-bottom: 15px;
+}
+
+.error-actions .btn {
+    margin-right: 10px;
+}
+
+/* تمييز الحالات المنسوخة تلقائياً */
+select[data-source="copied"] {
+    background-color: #e3f2fd;
+    border-left: 3px solid #2196f3;
+}
+
+select[data-source="default"] {
+    background-color: #f3e5f5;
+    border-left: 3px solid #9c27b0;
+}
+
+select[data-source="manual"] {
+    background-color: #e8f5e8;
+    border-left: 3px solid #4caf50;
+}

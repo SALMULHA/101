@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}تفاصيل المستخدم - منظومة التمام{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="fas fa-user"></i> تفاصيل المستخدم: {{ user.full_name }}</h2>
+        </div>
+    </div>
+    
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0">معلومات المستخدم</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <table class="table table-borderless">
+                        <tr>
+                            <td><strong>اسم المستخدم:</strong></td>
+                            <td>{{ user.username }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>الاسم الكامل:</strong></td>
+                            <td>{{ user.full_name }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>البريد الإلكتروني:</strong></td>
+                            <td>{{ user.email or 'غير محدد' }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>الدور:</strong></td>
+                            <td>
+                                <span class="badge bg-{% if user.role.name == 'مدير' %}danger{% elif user.role.name == 'مسؤول قسم' %}warning{% else %}secondary{% endif %}">
+                                    {{ user.role.name }}
+                                </span>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <table class="table table-borderless">
+                        <tr>
+                            <td><strong>القسم المحدد:</strong></td>
+                            <td>
+                                {% if user.department %}
+                                    <span class="badge bg-info fs-6">
+                                        <i class="fas fa-building"></i> {{ user.department.name }}
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-secondary fs-6">
+                                        <i class="fas fa-minus"></i> غير محدد
+                                    </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>الحالة:</strong></td>
+                            <td>
+                                {% if user.is_active %}
+                                    <span class="badge bg-success">نشط</span>
+                                {% else %}
+                                    <span class="badge bg-danger">غير نشط</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        <tr>
+                            <td><strong>تاريخ الإنشاء:</strong></td>
+                            <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else 'غير محدد' }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>آخر دخول:</strong></td>
+                            <td>{{ user.last_login.strftime('%Y-%m-%d %H:%M') if user.last_login else 'لم يسجل دخول' }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+            
+            {% if user.department %}
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="alert alert-info">
+                        <h6><i class="fas fa-info-circle"></i> معلومات القسم:</h6>
+                        <p class="mb-0">
+                            هذا المستخدم مخصص للعمل في قسم <strong>{{ user.department.name }}</strong>.
+                            {% if user.role.name == 'مسؤول قسم' %}
+                            كمسؤول قسم، يمكنه إدارة حضور وغياب أفراد هذا القسم فقط.
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <div class="d-flex justify-content-between mt-4">
+                <a href="{{ url_for('auth.users_list') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-right"></i> العودة إلى القائمة
+                </a>
+                <div>
+                    <a href="{{ url_for('auth.edit_user', user_id=user.id) }}" class="btn btn-primary">
+                        <i class="fas fa-edit"></i> تعديل
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
